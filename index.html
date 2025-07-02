@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Celular como Mouse</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+        user-select: none; /* Evita seleção de texto ao arrastar */
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        touch-action: none; /* Evita o zoom de pinch padrão */
+      }
+      h1 {
+        text-align: center;
+        margin: 10px;
+        font-size: 20px;
+      }
+      #touch-area {
+        width: 90%;
+        height: 60%;
+        max-height: 500px;
+        background-color: #ffffff;
+        border: 2px solid #ccc;
+        border-radius: 10px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 1.2em;
+        color: #555;
+        cursor: pointer;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .buttons-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 20px;
+        gap: 15px;
+      }
+      .mouseBtn {
+        position: relative;
+        box-sizing: border-box;
+        padding: 0px 30px;
+        height: 150px;
+        font-size: 1.1em;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      #left-click-btn {
+        background-color: #007bff;
+        color: white;
+      }
+      #left-click-btn:active {
+        background-color: #0056b3;
+      }
+      #right-click-btn {
+        background-color: #28a745;
+        color: white;
+      }
+      #right-click-btn:active {
+        background-color: #1e7e34;
+      }
+      #status {
+        margin-top: 20px;
+        font-size: 1em;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Use seu celular como mouse!</h1>
+    <div class="buttons-container">
+      <button class="mouseBtn" id="left-click-btn">Clique Esquerdo</button>
+      <button class="mouseBtn" id="right-click-btn">Clique Direito</button>
+    </div>
+    <div id="touch-area">Toque e arraste aqui para mover o mouse</div>
+    <p id="status">Desconectado</p>
+
+    <script>
+      const SERVER_IP = "192.168.96.107";
+      const SERVER_PORT = 8080;
+      const websocketUrl = `ws://${SERVER_IP}:${SERVER_PORT}`;
+
+      let ws;
+      const touchArea = document.getElementById("touch-area");
+      const leftClickBtn = document.getElementById("left-click-btn");
+      const rightClickBtn = document.getElementById("right-click-btn");
+      const statusElement = document.getElementById("status");
+
+      let lastX = 0;
+      let lastY = 0;
+      let isTouching = false;
+
+      function connectWebSocket() {
+        ws = new WebSocket(websocketUrl);
+
+        ws.onopen = () => {
+          console.log("Conectado ao servidor WebSocket");
+          statusElement.textContent = "Conectado!";
+          statusElement.style.color = "green";
+        };
+
+        ws.onmessage = (event) => {
+          console.log("Mensagem do servidor:", event.data);
+        };
+
+        ws.onclose = () => {
+          console.log(
+            "Desconectado do servidor WebSocket. Tentando reconectar em 3 segundos..."
+          );
+          statusElement.textContent = "Desconectado. Tentando reconectar...";
+          statusElement.style.color = "red";
+          setTimeout(connectWebSocket, 3000); // Tenta reconectar após 3 segundos
+        };
+
+        ws.onerror = (error) => {
+          console.error("Erro no WebSocket:", error);
+          statusElement.textContent = "Erro de conexão!";
+          statusElement.style.color = "red";
+          ws.close();
+        };
+      }
+
+      // Inicia a conexão WebSocket
+      connectWebSocket();
+
+      // --- Eventos de Toque para Movimento do Mouse ---
+      touchArea.addEventListener("touchstart", (e) => {
+        e.preventDefault(); // Evita rolagem da página
+        isTouching = true;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        function speedClick() {
+          ws.send(JSON.stringify({ type: "click" }));
+        }
+        touchArea.addEventListener("touchend", speedClick, false);
+        setTimeout(() => {
+          touchArea.removeEventListener("touchend", speedClick, false);
+        }, 100);
+      });
+
+      touchArea.addEventListener("touchmove", (e) => {
+        e.preventDefault(); // Evita rolagem da página
+        if (isTouching && ws && ws.readyState === WebSocket.OPEN) {
+          const currentX = e.touches[0].clientX;
+          const currentY = e.touches[0].clientY;
+
+          const deltaX = currentX - lastX;
+          const deltaY = currentY - lastY;
+
+          // Envia os deltas para o servidor
+          ws.send(JSON.stringify({ type: "move", deltaX, deltaY }));
+
+          lastX = currentX;
+          lastY = currentY;
+        }
+      });
+
+      touchArea.addEventListener("touchend", () => {
+        isTouching = false;
+      });
+
+      touchArea.addEventListener("dblclick", () => {
+        alert("db");
+        if (isTouching == false && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "click" }));
+        }
+      });
+
+      // --- Eventos para Cliques ---
+      leftClickBtn.addEventListener("click", () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "click" }));
+        }
+      });
+
+      leftClickBtn.addEventListener("dblclick", () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "press" }));
+        }
+      });
+
+      rightClickBtn.addEventListener("click", () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "rightClick" }));
+        }
+      });
+
+      touchArea.addEventListener(
+        "wheel",
+        (e) => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "scroll", scrollDeltaY: e.deltaY }));
+            e.preventDefault(); // Previne a rolagem da página
+          }
+        },
+        { passive: false }
+      ); // `passive: false` para poder usar preventDefault
+    </script>
+  </body>
+</html>
